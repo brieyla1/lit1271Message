@@ -3,7 +3,7 @@ import { keccak256, toBytes } from 'viem';
 
 const user = {
   baseProvider: 'test',
-  userId: 'test:elonmusk', // <- Patchwallet default account is "test:elonmusk"
+  userId: 'elonmusk', // <- Patchwallet default account is "test:elonmusk"
   patchId: '',
   salt: '',
   address: '',
@@ -116,6 +116,12 @@ const getAccessControlConditions = (chain: string) => {
     },
   ];
 };
+
+console.log({
+  user,
+  chain,
+  messageString,
+});
 
 // this will Fail.
 const encryptedSymmetricKey = await client
