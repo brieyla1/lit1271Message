@@ -1,5 +1,5 @@
 import { SiweMessage } from 'siwe';
-import { keccak256, toBytes } from 'viem';
+import { Address, createPublicClient, getContract, http, keccak256, toBytes } from 'viem';
 
 const user = {
   baseProvider: 'test',
@@ -14,8 +14,13 @@ user.salt = keccak256(toBytes(user.patchId + `:kernel-account`));
 const PATCHWALLET_PUBLIC_CLIENT_SECRET = 'k^yf57yg27MKo2SnuzwX';
 const PATCHWALLET_PUBLIC_CLIENT_ID = 'demo-user-external';
 
+const chainObj = polygonMumbai;
 const chain = 'mumbai';
 const chainId = 80001;
+const publicClient = createPublicClient({
+  transport: http(),
+  chain: polygonMumbai,
+});
 
 const access_token = (
   (await (
@@ -77,7 +82,7 @@ const result = await fetch(`https://paymagicapi.com/v1/kernel/sign`, {
   redirect: 'follow',
 });
 
-const signature: { signature: string; hash: string; type: string } = (await result.json()) as any;
+const signature: { signature: `0x${string}`; hash: `0x${string}`; type: string } = (await result.json()) as any;
 
 let authSig = {
   sig: signature.signature,
@@ -87,6 +92,8 @@ let authSig = {
 };
 
 import * as LitJsSdk from '@lit-protocol/lit-node-client';
+import { getPublicClient } from 'wagmi/actions';
+import { polygonMumbai } from 'viem/chains';
 
 const client = new LitJsSdk.LitNodeClient({
   litNetwork: 'serrano',
@@ -132,3 +139,39 @@ const encryptedSymmetricKey = await client
     chain: chain,
   })
   .catch((e) => console.log(e));
+
+const walletContract = getContract({
+  abi: [
+    {
+      inputs: [
+        {
+          internalType: 'bytes32',
+          name: 'hash',
+          type: 'bytes32',
+        },
+        {
+          internalType: 'bytes',
+          name: 'signature',
+          type: 'bytes',
+        },
+      ],
+      name: 'isValidSignature',
+      outputs: [
+        {
+          internalType: 'bytes4',
+          name: 'magicValue',
+          type: 'bytes4',
+        },
+      ],
+      stateMutability: 'view',
+      type: 'function',
+    },
+  ],
+  address: user.address as Address,
+  publicClient,
+});
+
+// ERC1271_SUCCESS = 0x1626ba7e;
+console.log(
+  'Is Signature Valid from contract: ' + ((await walletContract.read.isValidSignature([signature.hash, signature.signature])) === '0x1626ba7e')
+);
