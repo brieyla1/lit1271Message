@@ -1,0 +1,16 @@
+{
+  "name": "lit1271message",
+  "module": "index.ts",
+  "type": "module",
+  "devDependencies": {
+    "bun-types": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "siwe": "^2.1.4",
+    "@lit-protocol/lit-node-client": "^2.2.61",
+    "viem": "^1.19.1"
+  }
+}
