@@ -9,8 +9,10 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "siwe": "^2.1.4",
     "@lit-protocol/lit-node-client": "^2.2.61",
+    "getlit": "^0.10.0",
+    "global": "^4.4.0",
+    "siwe": "^2.1.4",
     "viem": "^1.19.1"
   }
 }

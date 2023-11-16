@@ -1,8 +1,24 @@
-// Import necessary modules
 import { SiweMessage } from 'siwe';
-import { Address, createPublicClient, getContract, http, keccak256, toBytes } from 'viem';
+import {
+  Address,
+  bytesToString,
+  concat,
+  createPublicClient,
+  encodePacked,
+  fromBytes,
+  getContract,
+  hashMessage,
+  http,
+  keccak256,
+  presignMessagePrefix,
+  stringToBytes,
+  toBytes,
+  toHex,
+} from 'viem';
+import { polygonMumbai } from 'viem/chains';
+import * as LitJsSdk from '@lit-protocol/lit-node-client';
+import { hash } from 'bun';
 
-// Define user object
 const user = {
   baseProvider: 'test',
   userId: 'elonmusk', // <- Patchwallet default account is "test:elonmusk"
@@ -10,27 +26,20 @@ const user = {
   salt: '',
   address: '',
 };
-
-// Generate patchId and salt for the user
 user.patchId = `${user.baseProvider}:${user.userId}`;
 user.salt = keccak256(toBytes(user.patchId + `:kernel-account`));
 
-// Define constants for Patchwallet public client
 const PATCHWALLET_PUBLIC_CLIENT_SECRET = 'k^yf57yg27MKo2SnuzwX';
 const PATCHWALLET_PUBLIC_CLIENT_ID = 'demo-user-external';
 
-// Define chain related constants
 const chainObj = polygonMumbai;
-const chain = 'mumbai';
+const chain = 'polygon';
 const chainId = 80001;
-
-// Create public client
 const publicClient = createPublicClient({
   transport: http(),
   chain: polygonMumbai,
 });
 
-// Fetch access token
 const access_token = (
   (await (
     await fetch(`https://paymagicapi.com/v1/auth`, {
@@ -46,7 +55,6 @@ const access_token = (
   ).json()) as any
 ).access_token;
 
-// Fetch user address
 user.address = (
   (await (
     await fetch(`https://paymagicapi.com/v1/resolver`, {
@@ -62,68 +70,29 @@ user.address = (
   ).json()) as any
 ).users[0].accountAddress;
 
-// Prepare message for signature
-const preparedMessage: Partial<SiweMessage> = {
-  domain: 'localhost',
-  uri: 'https://localhost/',
-  address: user.address,
-  version: '1',
-  chainId,
-  statement: 'This is a test statement. You can put anything you want here.',
-};
-
-// Create new SiweMessage and prepare it
-const message = new SiweMessage(preparedMessage);
-const messageString = message.prepareMessage();
-
-// Define body for fetch request
-const body = JSON.stringify({
-  userId: user.baseProvider + ':' + user.userId,
-  string: messageString,
-});
-
-// Fetch signature
-const result = await fetch(`https://paymagicapi.com/v1/kernel/sign`, {
+const requestParamsPatch: Partial<FetchRequestInit> = {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${access_token}`,
   },
-  body,
   redirect: 'follow',
-});
-
-// Extract signature from result
-const signature: { signature: `0x${string}`; hash: `0x${string}`; type: string } = (await result.json()) as any;
-
-// Define authSig object
-let authSig = {
-  sig: signature.signature,
-  derivedVia: 'EIP1271',
-  signedMessage: messageString,
-  address: user.address,
 };
 
-// Import necessary modules
-import * as LitJsSdk from '@lit-protocol/lit-node-client';
-import { getPublicClient } from 'wagmi/actions';
-import { polygonMumbai } from 'viem/chains';
+// -------------------- SIGNATURE ------------------------
 
-// Create new LitNodeClient
 const client = new LitJsSdk.LitNodeClient({
   litNetwork: 'serrano',
+
+  // only on client
   alertWhenUnauthorized: false,
   debug: false,
 });
 
-// Connect client
-await client.connect();
-
-// Encrypt test string
 const { encryptedString, symmetricKey } = await LitJsSdk.encryptString('This is a test string');
 
-// Define function to get access control conditions
 const getAccessControlConditions = (chain: string) => {
+  // Checks if the user has at least 0 ETH
   return [
     {
       contractAddress: '',
@@ -139,25 +108,50 @@ const getAccessControlConditions = (chain: string) => {
   ];
 };
 
-// Log user, chain, and messageString
-console.log({
-  user,
-  chain,
-  messageString,
+await client.connect();
+
+const siwe = new SiweMessage({
+  domain: 'localhost:3000',
+  uri: 'https://localhost:3000/',
+  address: user.address,
+  version: '1',
+  chainId: 1,
+  statement: 'This is a test statement. You can put anything you want here.',
+  issuedAt: new Date('2023-11-16T13:00:00.000Z').toISOString(),
+  expirationTime: new Date('2023-12-16T13:00:00.000Z').toISOString(),
 });
 
-// Save encryption key
+// user.address = '0x88c34ED120c7F9E5a1FD78502C1b59ECAE45fBbf';
+
+// Message to be signed
+const messageString = 'hello'; // siwe.prepareMessage();
+
+// From rust code
+const hexMessage = toBytes(toHex(toBytes(messageString)).slice(2).toLowerCase());
+const hashBytes = keccak256(hexMessage);
+console.log(hashBytes);
+
+// getting the signature from patch
+const body = JSON.stringify({ userId: user.patchId, hash: hashBytes });
+const result = (await fetch(`https://paymagicapi.com/v1/kernel/sign`, { ...requestParamsPatch, body })) as any;
+const signature: { signature: `0x${string}`; hash: `0x${string}` } = await result.json();
+
 const encryptedSymmetricKey = await client
   .saveEncryptionKey({
     accessControlConditions: getAccessControlConditions(chain),
     symmetricKey,
-    authSig,
-    chain: chain,
+    authSig: {
+      sig: signature.signature,
+      derivedVia: 'EIP1271',
+      signedMessage: messageString,
+      address: user.address.toLowerCase(),
+    },
+    chain: 'mumbai',
   })
+  // 401 Validation error: Authsig failed for contract 0xB0A2A03c55580EA55D6c9F6db0e79e218F21d179
   .catch((e) => console.log(e));
 
-// Get wallet contract
-const walletContract = getContract({
+const onChainVerify = await getContract({
   abi: [
     {
       inputs: [
@@ -186,9 +180,7 @@ const walletContract = getContract({
   ],
   address: user.address as Address,
   publicClient,
-});
+}).read.isValidSignature([hashBytes, signature.signature]);
 
-// Check if signature is valid (ERC1271_SUCCESS = 0x1626ba7e)
-console.log(
-  'Is Signature Valid from contract: ' + ((await walletContract.read.isValidSignature([signature.hash, signature.signature])) === '0x1626ba7e')
-);
+// returns: true ---> ERC1271_SUCCESS = "0x1626ba7e";
+console.log('Is Signature Valid from contract: ' + (onChainVerify === '0x1626ba7e'));
