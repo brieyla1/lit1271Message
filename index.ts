@@ -1,23 +1,9 @@
-import { SiweMessage } from 'siwe';
-import {
-  Address,
-  bytesToString,
-  concat,
-  createPublicClient,
-  encodePacked,
-  fromBytes,
-  getContract,
-  hashMessage,
-  http,
-  keccak256,
-  presignMessagePrefix,
-  stringToBytes,
-  toBytes,
-  toHex,
-} from 'viem';
-import { polygonMumbai } from 'viem/chains';
 import * as LitJsSdk from '@lit-protocol/lit-node-client';
-import { hash } from 'bun';
+import { SiweMessage } from 'siwe';
+import { Address, createPublicClient, getContract, http, keccak256, toBytes, toHex } from 'viem';
+import { polygonMumbai } from 'viem/chains';
+import { abi, getAccessControlConditions } from './helpers';
+import { ethers } from 'ethers';
 
 const user = {
   baseProvider: 'test',
@@ -32,9 +18,7 @@ user.salt = keccak256(toBytes(user.patchId + `:kernel-account`));
 const PATCHWALLET_PUBLIC_CLIENT_SECRET = 'k^yf57yg27MKo2SnuzwX';
 const PATCHWALLET_PUBLIC_CLIENT_ID = 'demo-user-external';
 
-const chainObj = polygonMumbai;
-const chain = 'polygon';
-const chainId = 80001;
+const chain = 'mumbai';
 const publicClient = createPublicClient({
   transport: http(),
   chain: polygonMumbai,
@@ -91,23 +75,6 @@ const client = new LitJsSdk.LitNodeClient({
 
 const { encryptedString, symmetricKey } = await LitJsSdk.encryptString('This is a test string');
 
-const getAccessControlConditions = (chain: string) => {
-  // Checks if the user has at least 0 ETH
-  return [
-    {
-      contractAddress: '',
-      standardContractType: '',
-      chain,
-      method: 'eth_getBalance',
-      parameters: [':userAddress', 'latest'],
-      returnValueTest: {
-        comparator: '>=',
-        value: '0',
-      },
-    },
-  ];
-};
-
 await client.connect();
 
 const siwe = new SiweMessage({
@@ -121,15 +88,19 @@ const siwe = new SiweMessage({
   expirationTime: new Date('2023-12-16T13:00:00.000Z').toISOString(),
 });
 
-// user.address = '0x88c34ED120c7F9E5a1FD78502C1b59ECAE45fBbf';
-
 // Message to be signed
-const messageString = 'hello'; // siwe.prepareMessage();
+const messageString = siwe.prepareMessage();
 
 // From rust code
 const hexMessage = toBytes(toHex(toBytes(messageString)).slice(2).toLowerCase());
 const hashBytes = keccak256(hexMessage);
-console.log(hashBytes);
+
+// Same implementation using ethers
+const hexMessageUsingEthers = ethers.utils.toUtf8Bytes(ethers.utils.hexlify(ethers.utils.toUtf8Bytes(messageString)).substring(2).toLowerCase());
+const hashBytesUsingEthers = ethers.utils.keccak256(hexMessageUsingEthers);
+
+// outputs: true
+console.log('Is ethers the same: ' + (hashBytes === hashBytesUsingEthers && JSON.stringify(hexMessage) === JSON.stringify(hexMessageUsingEthers)));
 
 // getting the signature from patch
 const body = JSON.stringify({ userId: user.patchId, hash: hashBytes });
@@ -152,32 +123,7 @@ const encryptedSymmetricKey = await client
   .catch((e) => console.log(e));
 
 const onChainVerify = await getContract({
-  abi: [
-    {
-      inputs: [
-        {
-          internalType: 'bytes32',
-          name: 'hash',
-          type: 'bytes32',
-        },
-        {
-          internalType: 'bytes',
-          name: 'signature',
-          type: 'bytes',
-        },
-      ],
-      name: 'isValidSignature',
-      outputs: [
-        {
-          internalType: 'bytes4',
-          name: 'magicValue',
-          type: 'bytes4',
-        },
-      ],
-      stateMutability: 'view',
-      type: 'function',
-    },
-  ],
+  abi,
   address: user.address as Address,
   publicClient,
 }).read.isValidSignature([hashBytes, signature.signature]);

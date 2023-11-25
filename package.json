@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@lit-protocol/lit-node-client": "^2.2.61",
+    "ethers": "^6.8.1",
     "getlit": "^0.10.0",
     "global": "^4.4.0",
     "siwe": "^2.1.4",
